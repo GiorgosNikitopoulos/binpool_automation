@@ -4,11 +4,18 @@ import pdb
 from parse import *
 import os
 
+def environment_vars(flag_level):
+    environment = {"CFLAGS": f"-O{flag_level}",
+                   "CXXFLAGS": f"-O{flag_level}",
+                   "FFLAGS": f"-O{flag_level}",
+                   "DEB_BUILD_OPTIONS": "nostrip debug"}
+    return environment
+
 def exit_container(container):
     container.stop()
     container.remove()
 
-def build(link, image, patch):
+def build(link, image, patch, opt = 1):
     ''' This function test builds a repository and returns the 
         list of patches that can be applied to it by quilt'''
     #Create Docker Client
@@ -18,8 +25,8 @@ def build(link, image, patch):
     container = client.containers.run(image, detach=True, tty=True, name="test_container")
     
     #Download Material
-    command = "dget -u --insecure https://snapshot.debian.org/archive/debian/20160917T223122Z/pool/main/o/openjpeg2/openjpeg2_2.1.0-2%2Bdeb8u1.dsc"
-    #command = f"dget -u --insecure {link}"
+    #command = "dget -u --insecure https://snapshot.debian.org/archive/debian/20160917T223122Z/pool/main/o/openjpeg2/openjpeg2_2.1.0-2%2Bdeb8u1.dsc"
+    command = f"dget -u --insecure {link}"
     exec_log = client.api.exec_create(container.id, command)
     output = client.api.exec_start(exec_log['Id'])
     
@@ -50,7 +57,8 @@ def build(link, image, patch):
     #Build
     command = "dpkg-buildpackage -us -uc"
     exec_log = client.api.exec_create(container.id, 
-                                      command, workdir=f"/usr/src/app/{directory}") #Workdir change
+                                      command, environment = environment_vars(opt), #Create environment variables with opt equal to the current runs opts
+                                      workdir=f"/usr/src/app/{directory}") #Workdir change
     output = client.api.exec_start(exec_log['Id'])
 
     #Create output_directory
@@ -72,11 +80,16 @@ def build(link, image, patch):
     exec_log = client.api.exec_create(container.id, 
                                       command)
     output = client.api.exec_start(exec_log['Id'])
-    ls_result = int(output)
+    try:
+        ls_result = int(output)
+    except ValueError:
+        exit_container(container)
+        return None
 
     if ls_result <= 3: 
         #Then no .deb file was created
         #Return None and do not extract anything
+        exit_container(container)
         return None
 
 
@@ -87,7 +100,7 @@ def build(link, image, patch):
     patch = patch.decode('utf-8')
     patch = patch.split(".")[0]
 
-    with open(f"debs/{directory}-{patch}", 'wb') as f:
+    with open(f"debs/{directory}_{patch}_opt{opt}", 'wb') as f:
         for chunk in bits:
             f.write(chunk)
     
@@ -108,8 +121,8 @@ def initial_build(link, image):
     container = client.containers.run(image, detach=True, tty=True, name="test_container")
     
     #Download Material
-    command = "dget -u --insecure https://snapshot.debian.org/archive/debian/20160917T223122Z/pool/main/o/openjpeg2/openjpeg2_2.1.0-2%2Bdeb8u1.dsc"
-    #command = f"dget -u --insecure {link}"
+    #command = "dget -u --insecure https://snapshot.debian.org/archive/debian/20160917T223122Z/pool/main/o/openjpeg2/openjpeg2_2.1.0-2%2Bdeb8u1.dsc"
+    command = f"dget -u --insecure {link}"
     exec_log = client.api.exec_create(container.id, command)
     output = client.api.exec_start(exec_log['Id'])
     
@@ -157,11 +170,18 @@ def initial_build(link, image):
     exec_log = client.api.exec_create(container.id, 
                                       command)
     output = client.api.exec_start(exec_log['Id'])
-    ls_result = int(output)
+    try:
+        ls_result = int(output)
+    except ValueError:
+        #Then no .deb file was created
+        #Return None and do not extract anything
+        exit_container(container)
+        return None
 
     if ls_result <= 3: 
         #Then no .deb file was created
         #Return None and do not extract anything
+        exit_container(container)
         return None
 
     ##Which patches are in there
@@ -207,7 +227,6 @@ if __name__ == "__main__":
         if patches == None:
             continue
         for patch in patches:
-            build(link, args.image, patch)
-
-            
+            for opt in [1, 2, 3]:
+                build(link, args.image, patch, opt)
 

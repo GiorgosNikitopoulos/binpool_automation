@@ -32,12 +32,14 @@ def build(link, image, patch, opt = 1):
     
     #Get the project name and directory name
     project, directory = search("info: extracting {} in {}\n", output.decode())
+    print(f"This is {project} and {directory}")
 
     #Quilt pop the patch
-    command = f"quilt pop debian/patches/{patch}"
-    exec_log = client.api.exec_create(container.id, 
-                                      command, workdir=f"/usr/src/app/{directory}") #Workdir change
-    output = client.api.exec_start(exec_log['Id'])
+    if patch != None:
+        command = f"quilt pop debian/patches/{patch}"
+        exec_log = client.api.exec_create(container.id, 
+                                          command, workdir=f"/usr/src/app/{directory}") #Workdir change
+        output = client.api.exec_start(exec_log['Id'])
     #pdb.set_trace()
 
     #Install dependencies
@@ -97,8 +99,11 @@ def build(link, image, patch, opt = 1):
     bits, stat = container.get_archive("/usr/src/app/output_directory/")
     os.makedirs("debs", exist_ok=True)
 
-    patch = patch.decode('utf-8')
-    patch = patch.split(".")[0]
+    if patch != None:
+        patch = patch.decode('utf-8')
+        patch = patch.split(".")[0]
+    else:
+        patch = "None"
 
     with open(f"debs/{directory}_{patch}_opt{opt}", 'wb') as f:
         for chunk in bits:
@@ -126,6 +131,7 @@ def initial_build(link, image):
     exec_log = client.api.exec_create(container.id, command)
     output = client.api.exec_start(exec_log['Id'])
     
+    #pdb.set_trace()
     #Get the project name and directory name
     project, directory = search("info: extracting {} in {}\n", output.decode())
 
@@ -189,6 +195,11 @@ def initial_build(link, image):
     exec_log = client.api.exec_create(container.id, 
                                       command, workdir=f"/usr/src/app/{directory}/debian/patches/")
     output = client.api.exec_start(exec_log['Id'])
+
+    ##TODO Check if ls is empty
+    if "No such file or directory" in str(output):
+        exit_container(container)
+        return None
     cve_patches = output.splitlines()
 
 
@@ -226,6 +237,8 @@ if __name__ == "__main__":
         patches = initial_build(link, args.image)
         if patches == None:
             continue
+        #No patches is a patch version too
+        patches = [None] + patches
         for patch in patches:
             for opt in [1, 2, 3]:
                 build(link, args.image, patch, opt)

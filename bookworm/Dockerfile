@@ -1,4 +1,6 @@
-FROM debian:bullseye
+# Use Debian Bookworm as the base image
+FROM debian:bookworm
+
 # Set non-interactive frontend
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -35,4 +37,3 @@ WORKDIR /usr/src/app
 CMD ["tail", "-f", "/dev/null"]
 # To run the Python script, replace with:
 # CMD ["python3", "python_program/install_c_project.py"]
-

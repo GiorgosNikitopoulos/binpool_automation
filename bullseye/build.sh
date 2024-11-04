@@ -1,1 +1,1 @@
-sudo docker build -t test .
+sudo docker build -t bullseye .

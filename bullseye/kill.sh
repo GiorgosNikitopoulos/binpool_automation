@@ -1,2 +1,2 @@
-sudo docker stop test_container
-sudo docker rm test_container
+sudo docker stop bs_container
+sudo docker rm bs_container 

@@ -22,7 +22,7 @@ def build(link, image, patch, opt = 1):
     client = docker.from_env()
 
     #Spawn container
-    container = client.containers.run(image, detach=True, tty=True, name="test_container")
+    container = client.containers.run(image, detach=True, tty=True, name=f"{image}_container")
     
     #Download Material
     #command = "dget -u --insecure https://snapshot.debian.org/archive/debian/20160917T223122Z/pool/main/o/openjpeg2/openjpeg2_2.1.0-2%2Bdeb8u1.dsc"
@@ -31,8 +31,13 @@ def build(link, image, patch, opt = 1):
     output = client.api.exec_start(exec_log['Id'])
     
     #Get the project name and directory name
-    project, directory = search("info: extracting {} in {}\n", output.decode())
-    print(f"This is {project} and {directory}")
+    try:
+        project, directory = search("info: extracting {} in {}\n", output.decode())
+        print(f"This is {project} and {directory}")
+    except Exception as e:
+        print(e)
+        exit_container(container)
+        return False
 
     #Quilt pop the patch
     if patch != None:
@@ -123,7 +128,7 @@ def initial_build(link, image):
     client = docker.from_env()
 
     #Spawn container
-    container = client.containers.run(image, detach=True, tty=True, name="test_container")
+    container = client.containers.run(image, detach=True, tty=True, name=f"{image}_container")
     
     #Download Material
     #command = "dget -u --insecure https://snapshot.debian.org/archive/debian/20160917T223122Z/pool/main/o/openjpeg2/openjpeg2_2.1.0-2%2Bdeb8u1.dsc"
@@ -133,7 +138,13 @@ def initial_build(link, image):
     
     #pdb.set_trace()
     #Get the project name and directory name
-    project, directory = search("info: extracting {} in {}\n", output.decode())
+    try:
+        project, directory = search("info: extracting {} in {}\n", output.decode())
+        print(f"This is {project} and {directory}")
+    except Exception as e:
+        print(e)
+        exit_container(container)
+        return False
 
     #Install dependencies
     command = "apt build-dep . -y"
@@ -191,16 +202,19 @@ def initial_build(link, image):
         return None
 
     ##Which patches are in there
+    ##TODO Change this to do all patch files
     command = "/bin/sh -c 'ls -1a CVE-*'"
     exec_log = client.api.exec_create(container.id, 
                                       command, workdir=f"/usr/src/app/{directory}/debian/patches/")
     output = client.api.exec_start(exec_log['Id'])
 
-    ##TODO Check if ls is empty
+    ##Check if ls is empty
     if "No such file or directory" in str(output):
         exit_container(container)
         return None
     cve_patches = output.splitlines()
+
+    ##TODO Get list and cat all files to find CVE-NNNN-NNNNN pattern in a loop
 
 
     #Copy output_directory to host
@@ -235,7 +249,7 @@ if __name__ == "__main__":
 
     for link in (links.split()):
         patches = initial_build(link, args.image)
-        if patches == None:
+        if patches == None or patches == False:
             continue
         #No patches is a patch version too
         patches = [None] + patches

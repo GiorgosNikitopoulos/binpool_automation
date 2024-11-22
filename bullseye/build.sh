@@ -1,1 +1,1 @@
-sudo docker build -t bullseye .
+sudo docker build --build-arg CLEAN_APT_CACHE=false -t bullseye .

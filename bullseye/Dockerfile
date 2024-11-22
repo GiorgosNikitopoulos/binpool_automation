@@ -18,9 +18,11 @@ RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
 # Install any additional packages needed
 RUN apt-get update && apt-get install -y \
     devscripts \
-    && rm -rf /var/lib/apt/lists/*
+    quilt
+#    && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
+RUN mkdir /usr/src/app
 WORKDIR /usr/src/app
 
 # Copy Python and C project files into the container

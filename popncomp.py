@@ -235,7 +235,6 @@ def initial_build(link, image):
         for chunk in bits:
             f.write(chunk)
     
-    
     #Remove container
     exit_container(container)
     

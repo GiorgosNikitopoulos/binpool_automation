@@ -55,15 +55,6 @@ def build(link, image, patch, filename, opt = 1):
                                       command, workdir=f"/usr/src/app/{directory}") #Workdir change
     output = client.api.exec_start(exec_log['Id'])
 
-    ##TODO Maybe remove this it does not go well
-    #try:
-    #    done = search("\r\n\r\ndone.\r\ndone.\r\n", output.decode())
-    #except Exception as e:
-    #    print(e)
-    #    exit_container(container)
-    #    return False
-
-
     #Build
     command = "dpkg-buildpackage -us -uc"
     exec_log = client.api.exec_create(container.id, 

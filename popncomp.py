@@ -26,7 +26,7 @@ def handle_ctrl_c_with_locals(func):
                     tb = tb.tb_next
                     continue
                 
-                print(f"Caught interupt in {func_name}")
+                print(f"Caught interrupt in {func_name}")
                 for var_name, value in local_vars.items():
                     print(f"  {var_name}: {value}")
                     if var_name == 'container':

@@ -17,7 +17,7 @@ def exit_container(container):
     container.stop()
     container.remove()
 
-def build(link, image, patch, filename, opt = 1):
+def build(link, image, patch, filename, patch_file, opt, args):
     ''' This function test builds a repository and returns the 
         list of patches that can be applied to it by quilt'''
     print(f"Build function being called with patch: {patch} and filename: {filename}")
@@ -56,7 +56,7 @@ def build(link, image, patch, filename, opt = 1):
     output = client.api.exec_start(exec_log['Id'])
 
     #Build
-    command = "dpkg-buildpackage -us -uc"
+    command = "dpkg-buildpackage -us -uc -j10"
     exec_log = client.api.exec_create(container.id, 
                                       command, environment = environment_vars(opt), #Create environment variables with opt equal to the current runs opts
                                       workdir=f"/usr/src/app/{directory}") #Workdir change
@@ -98,16 +98,22 @@ def build(link, image, patch, filename, opt = 1):
 
     #Copy output_directory to host
     bits, stat = container.get_archive("/usr/src/app/output_directory/")
-    os.makedirs("debs_test", exist_ok=True)
+    os.makedirs(f"{args.output_dir}", exist_ok=True)
 
     if patch != None:
         patch = patch.split(".")[0]
     else:
         patch = "None"
 
-    with open(f"debs_test/{directory}_{patch}_opt{opt}", 'wb') as f:
+    #Write tar
+    with open(f"{args.output_dir}/{directory}_{patch}_opt{opt}", 'wb') as f:
         for chunk in bits:
             f.write(chunk)
+
+    #Write the patch file
+    if patch_file != None:
+        with open(f"{args.output_dir}/{directory}_{patch}_opt{opt}.patch", 'wb') as f:
+            f.write(patch_file)
     
     #Remove container
     exit_container(container)
@@ -115,14 +121,14 @@ def build(link, image, patch, filename, opt = 1):
     return
 
 
-def initial_build(link, image):
+def initial_build(link, args):
     ''' This function test builds a repository and returns the 
         list of patches that can be applied to it by quilt'''
     #Create Docker Client
     client = docker.from_env()
 
     #Spawn container
-    container = client.containers.run(image, detach=True, tty=True, name=f"{image}_container")
+    container = client.containers.run(args.image, detach=True, tty=True, name=f"{args.image}_container")
     
     #Download Material
     #command = "dget -u --insecure https://snapshot.debian.org/archive/debian/20160917T223122Z/pool/main/o/openjpeg2/openjpeg2_2.1.0-2%2Bdeb8u1.dsc"
@@ -147,7 +153,7 @@ def initial_build(link, image):
     output = client.api.exec_start(exec_log['Id'])
 
     #Build
-    command = "dpkg-buildpackage -us -uc"
+    command = "dpkg-buildpackage -us -uc -j10"
     exec_log = client.api.exec_create(container.id, 
                                       command, workdir=f"/usr/src/app/{directory}") #Workdir change
     output = client.api.exec_start(exec_log['Id'])
@@ -201,6 +207,7 @@ def initial_build(link, image):
 
     cve_patches = []
     filenames = []
+    patch_contents = []
     #Get list and cat all files to find CVE-NNNN-NNNNN pattern in a loop
     for patch in patches:
         if patch != b'.' and patch != b'..':
@@ -214,6 +221,7 @@ def initial_build(link, image):
             found = re.search("CVE-\d{4}-\d{4,}", output.decode('utf-8'))
             if found:
                 #Keep actual CVE patch names
+                patch_contents.append(output)
                 cve_patches.append(found.group())
                 filenames.append(patch_encoded)
 
@@ -221,8 +229,8 @@ def initial_build(link, image):
     print(filenames)
     #Copy output_directory to host
     bits, stat = container.get_archive("/usr/src/app/output_directory/")
-    os.makedirs("debs_test", exist_ok=True)
-    with open(f"debs_test/{directory}", 'wb') as f:
+    os.makedirs(f"{args.output_dir}", exist_ok=True)
+    with open(f"{args.output_dir}/{directory}", 'wb') as f:
         for chunk in bits:
             f.write(chunk)
     
@@ -234,7 +242,7 @@ def initial_build(link, image):
     else:
         cve_patches = None
 
-    return cve_patches, filenames
+    return cve_patches, filenames, patch_contents
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Process a list of links and extract .deb files")
@@ -242,6 +250,8 @@ if __name__ == "__main__":
     # Add argument to accept a file path
     parser.add_argument('--input_file', type=str, help='Path to the input link file')
     parser.add_argument('--image', type=str, help='Path to the input link file')
+    parser.add_argument('--output_dir', default = "debs_test_2", type=str, help='Path of directory')
+    parser.add_argument('--parallels', default = 32, type=int, help='Path of directory')
 
     args = parser.parse_args()
 
@@ -249,13 +259,14 @@ if __name__ == "__main__":
         links = f.read()
 
     for link in (links.split()):
-        patches, patch_files = initial_build(link, args.image)
+        patches, patch_files, patch_contents = initial_build(link, args)
         if patches == None or patches == False:
             continue
         #No patches is a patch version too
         patches = [None] + patches
         patch_files = [None] + patch_files
-        for patch, filename in zip(patches, patch_files):
+        patch_contents = [None] + patch_contents
+        for patch, filename, patch_file in zip(patches, patch_files, patch_contents):
             for opt in [0, 1, 2, 3]:
-                build(link, args.image, patch, filename, opt)
+                build(link, args.image, patch, filename, patch_file, opt, args)
 

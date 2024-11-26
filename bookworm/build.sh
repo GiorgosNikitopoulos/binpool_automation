@@ -1,1 +1,1 @@
-sudo docker build -t bookworm_ce .
+docker build -t bookworm_ce .

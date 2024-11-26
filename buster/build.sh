@@ -1,1 +1,1 @@
-sudo docker build -t buster_ce .
+docker build -t buster_ce .

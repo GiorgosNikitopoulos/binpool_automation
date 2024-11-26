@@ -25,6 +25,7 @@ RUN apt-get update && apt-get upgrade -y
 
 # Install any additional packages
 RUN apt-get update && apt-get install -y \
+    quilt \
     devscripts
 
 # Create a working directory

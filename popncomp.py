@@ -1,10 +1,58 @@
 import docker
+import inspect
 import argparse
 import pdb
 from parse import *
 import os
 import re
 import sys
+
+
+def handle_ctrl_c_with_locals(func):
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except KeyboardInterrupt:
+            print("\nCtrl+C caught!")
+            print("Accessing local variables at the time of interrupt:")
+            
+            # Get the current exception traceback
+            tb = sys.exc_info()[2]
+            while tb.tb_next:  # Traverse to the last frame (function that triggered Ctrl+C)
+                frame = tb.tb_frame
+                local_vars = frame.f_locals
+                func_name = frame.f_code.co_name
+                if "build" not in func_name:
+                    tb = tb.tb_next
+                    continue
+                
+                print(f"Caught interupt in {func_name}")
+                for var_name, value in local_vars.items():
+                    print(f"  {var_name}: {value}")
+                    if var_name == 'container':
+                        print(f"Exiting container {value.name}, please wait...")
+                        exit_container(value)
+                        sys.exit(1)
+    return wrapper
+
+def log_function_call(func):
+    def wrapper(*args, **kwargs):
+        func_name = func.__name__
+
+        sig = inspect.signature(func)
+        bound_args = sig.bind(*args, **kwargs)
+        bound_args.apply_defaults()  # Ensure default values are included
+
+        print(f"Function '{func_name}' called with arguments: ")
+        for k,v in bound_args.arguments.items():
+            print(f"\t{k}: {v}")
+            if hasattr(v, 'name'):
+                print(f"\t\t{v.name}")
+
+        return func(*args, **kwargs)
+
+    return wrapper
+
 
 def environment_vars(flag_level):
     environment = {"CFLAGS": f"-O{flag_level}",
@@ -17,16 +65,15 @@ def exit_container(container):
     container.stop()
     container.remove()
 
-def build(link, image, patch, filename, opt = 1):
+
+@handle_ctrl_c_with_locals
+@log_function_call
+def build(link, container, patch, filename, opt = 1):
     ''' This function test builds a repository and returns the 
         list of patches that can be applied to it by quilt'''
-    print(f"Build function being called with patch: {patch} and filename: {filename}")
-    #Create Docker Client
+    
     client = docker.from_env()
 
-    #Spawn container
-    container = client.containers.run(image, detach=True, tty=True, name=f"{image}_container")
-    
     #Download Material
     command = f"dget -u --insecure {link}"
     exec_log = client.api.exec_create(container.id, command)
@@ -93,14 +140,14 @@ def build(link, image, patch, filename, opt = 1):
     try:
         ls_result = int(output)
     except ValueError:
-        print("No .deb file was created return None and do not extract anything", sys.stderr)
+        print("No .deb file was created return None and do not extract anything", file=sys.stderr)
         exit_container(container)
         return None
 
     if ls_result <= 3: 
         #Then no .deb file was created
         #Return None and do not extract anything
-        print("No .deb file was created return None and do not extract anything", sys.stderr)
+        print("No .deb file was created return None and do not extract anything", file=sys.stderr)
         exit_container(container)
         return None
 
@@ -124,15 +171,19 @@ def build(link, image, patch, filename, opt = 1):
     return
 
 
-def initial_build(link, image):
+def run_container(image, name, detach=True, tty=True):
+    client = docker.from_env()
+    container = client.containers.run(image, detach=detach, tty=tty, name=name)
+    return container
+
+@handle_ctrl_c_with_locals
+@log_function_call
+def initial_build(link, container):
     ''' This function test builds a repository and returns the 
         list of patches that can be applied to it by quilt'''
-    #Create Docker Client
+
     client = docker.from_env()
 
-    #Spawn container
-    container = client.containers.run(image, detach=True, tty=True, name=f"{image}_container")
-    
     #Download Material
     #command = "dget -u --insecure https://snapshot.debian.org/archive/debian/20160917T223122Z/pool/main/o/openjpeg2/openjpeg2_2.1.0-2%2Bdeb8u1.dsc"
     command = f"dget -u --insecure {link}"
@@ -185,14 +236,14 @@ def initial_build(link, image):
     except ValueError:
         #Then no .deb file was created
         #Return None and do not extract anything
-        print("No .deb file was created return None and do not extract anything", sys.stderr)
+        print("No .deb file was created return None and do not extract anything", file=sys.stderr)
         exit_container(container)
         return None, None
 
     if ls_result <= 3: 
         #Then no .deb file was created
         #Return None and do not extract anything
-        print("No .deb file was created return None and do not extract anything", sys.stderr)
+        print("No .deb file was created return None and do not extract anything", file=sys.stderr)
         exit_container(container)
         return None, None
 
@@ -254,17 +305,25 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+
     with open(args.input_file, 'r') as f:
         links = f.read()
 
     for link in (links.split()):
-        patches, patch_files = initial_build(link, args.image)
+        # create random suffix
+        _id = os.urandom(4).hex()
+
+        # spawn container
+        container = run_container(args.image, f"{args.image}_container_{_id}")
+
+        patches, patch_files = initial_build(link, container)
         if patches == None or patches == False:
             continue
+
         #No patches is a patch version too
         patches = [None] + patches
         patch_files = [None] + patch_files
         for patch, filename in zip(patches, patch_files):
             for opt in [0, 1, 2, 3]:
-                build(link, args.image, patch, filename, opt)
+                build(link, container, patch, filename, opt)
 

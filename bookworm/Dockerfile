@@ -20,6 +20,7 @@ RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
 # Install any additional packages needed
 RUN apt-get update && apt-get install -y \
     devscripts \
+    quilt \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory

@@ -1,1 +1,1 @@
-sudo docker build -t stretch .
+docker build -t stretch .

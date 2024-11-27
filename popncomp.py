@@ -144,7 +144,7 @@ def initial_build(link, args):
     except Exception as e:
         print(e)
         exit_container(container)
-        return None, None, None
+        return None, None
 
     #Install dependencies
     command = "apt build-dep . -y"
@@ -184,14 +184,14 @@ def initial_build(link, args):
         #Return None and do not extract anything
         print("No .deb file was created return None and do not extract anything", sys.stderr)
         exit_container(container)
-        return None, None, None
+        return None, None
 
     if ls_result <= 3: 
         #Then no .deb file was created
         #Return None and do not extract anything
         print("No .deb file was created return None and do not extract anything", sys.stderr)
         exit_container(container)
-        return None, None, None
+        return None, None
 
     ##Which patches are in there
     command = "/bin/sh -c 'ls -1a'"

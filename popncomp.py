@@ -62,8 +62,8 @@ def environment_vars(flag_level):
     return environment
 
 def exit_container(container):
-    container.stop()
-    container.remove()
+    container.stop(timeout=10)
+    container.remove(force=True)
 
 
 @handle_ctrl_c_with_locals
@@ -166,12 +166,16 @@ def build(link, container, patch, filename, opt = 1):
     #Remove container
     exit_container(container)
     
+    #Disconnect client
+    client.close()
+
     return
 
 
 def run_container(image, name, detach=True, tty=True):
     client = docker.from_env()
     container = client.containers.run(image, detach=detach, tty=tty, name=name)
+    client.close()
     return container
 
 @handle_ctrl_c_with_locals
@@ -200,6 +204,7 @@ def initial_build(link, container):
     except Exception as e:
         print(e)
         exit_container(container)
+        client.close()
         return def_ret
 
     #Install dependencies
@@ -239,6 +244,7 @@ def initial_build(link, container):
         #Return None and do not extract anything
         print("No .deb file was created return None and do not extract anything", file=sys.stderr)
         exit_container(container)
+        client.close()
         return def_ret
 
     if ls_result <= 3: 
@@ -246,6 +252,7 @@ def initial_build(link, container):
         #Return None and do not extract anything
         print("No .deb file was created return None and do not extract anything", file=sys.stderr)
         exit_container(container)
+        client.close()
         return def_ret
 
     ##Which patches are in there
@@ -257,6 +264,7 @@ def initial_build(link, container):
     ##Check if ls is empty
     if "No such file or directory" in str(output):
         exit_container(container)
+        client.close()
         return def_ret
     patches = output.splitlines()
 

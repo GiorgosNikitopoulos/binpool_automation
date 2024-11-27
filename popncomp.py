@@ -183,6 +183,9 @@ def initial_build(link, container):
 
     client = docker.from_env()
 
+    # default return
+    def_ret = None, None, None
+
     #Download Material
     #command = "dget -u --insecure https://snapshot.debian.org/archive/debian/20160917T223122Z/pool/main/o/openjpeg2/openjpeg2_2.1.0-2%2Bdeb8u1.dsc"
     command = f"dget -u --insecure {link}"
@@ -197,7 +200,7 @@ def initial_build(link, container):
     except Exception as e:
         print(e)
         exit_container(container)
-        return None, None
+        return def_ret
 
     #Install dependencies
     command = "apt build-dep . -y"
@@ -224,7 +227,6 @@ def initial_build(link, container):
                                       command)
     output = client.api.exec_start(exec_log['Id'])
 
-
     ##See if it produced the debs
     command = "/bin/sh -c 'ls *.deb output_directory/ | wc -l'"
     exec_log = client.api.exec_create(container.id, 
@@ -237,14 +239,14 @@ def initial_build(link, container):
         #Return None and do not extract anything
         print("No .deb file was created return None and do not extract anything", file=sys.stderr)
         exit_container(container)
-        return None, None
+        return def_ret
 
     if ls_result <= 3: 
         #Then no .deb file was created
         #Return None and do not extract anything
         print("No .deb file was created return None and do not extract anything", file=sys.stderr)
         exit_container(container)
-        return None, None
+        return def_ret
 
     ##Which patches are in there
     command = "/bin/sh -c 'ls -1a'"
@@ -255,7 +257,7 @@ def initial_build(link, container):
     ##Check if ls is empty
     if "No such file or directory" in str(output):
         exit_container(container)
-        return None, None
+        return def_ret
     patches = output.splitlines()
 
     cve_patches = []
@@ -308,18 +310,17 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    _id = os.urandom(4).hex()
 
     with open(args.input_file, 'r') as f:
         links = f.read()
 
     for link in (links.split()):
         # create random suffix
-        _id = os.urandom(4).hex()
 
         # spawn container
         container = run_container(args.image, f"{args.image}_container_{_id}")
-
-        patches, patch_files = initial_build(link, container)
+        patches, patch_files, patch_contents = initial_build(link, container)
 
         if patches == None or patches == False:
             continue
@@ -330,6 +331,7 @@ if __name__ == "__main__":
         patch_contents = [None] + patch_contents
         for patch, filename, patch_file in zip(patches, patch_files, patch_contents):
             for opt in [0, 1, 2, 3]:
+                container = run_container(args.image, f"{args.image}_container_{_id}")
                 build(link, container, patch, filename, opt)
 
 

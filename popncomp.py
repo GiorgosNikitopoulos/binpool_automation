@@ -273,7 +273,7 @@ def initial_build(link, container):
     patch_contents = []
     #Get list and cat all files to find CVE-NNNN-NNNNN pattern in a loop
     for patch in patches:
-        if patch != b'.' and patch != b'..':
+        if patch != b'.' and patch != b'..' and patch != b'series':
             patch_encoded = patch.decode('utf-8')
             command = f"cat {patch_encoded}"
             exec_log = client.api.exec_create(container.id,

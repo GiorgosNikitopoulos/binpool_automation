@@ -96,7 +96,7 @@ def build(link, container, patch, filename, opt = 1):
     if patch != None:
         command = f"quilt pop {filename}"
         exec_log = client.api.exec_create(container.id, 
-                                          command, workdir=f"/usr/src/app/{directory}") #Workdir change
+                                          command, workdir=f"/usr/src/app/{directory}/debian/patches") #Workdir change
         output = client.api.exec_start(exec_log['Id'])
         print(output)
 
@@ -107,7 +107,7 @@ def build(link, container, patch, filename, opt = 1):
     output = client.api.exec_start(exec_log['Id'])
 
     #Build
-    command = "dpkg-buildpackage -us -uc -j10"
+    command = "dpkg-buildpackage -us -uc -j40"
     exec_log = client.api.exec_create(container.id, 
                                       command, environment = environment_vars(opt), #Create environment variables with opt equal to the current runs opts
                                       workdir=f"/usr/src/app/{directory}") #Workdir change
@@ -218,7 +218,7 @@ def initial_build(link, container, args):
     output = client.api.exec_start(exec_log['Id'])
 
     #Build
-    command = "dpkg-buildpackage -us -uc -j10"
+    command = "dpkg-buildpackage -us -uc -j40"
     exec_log = client.api.exec_create(container.id, 
                                       command, workdir=f"/usr/src/app/{directory}") #Workdir change
 
@@ -270,7 +270,7 @@ def initial_build(link, container, args):
     ##Which patches are in there
     command = "/bin/sh -c 'quilt series'"
     exec_log = client.api.exec_create(container.id, 
-                                      command, workdir=f"/usr/src/app/{directory}")
+                                      command, workdir=f"/usr/src/app/{directory}/debian/patches")
     output = client.api.exec_start(exec_log['Id'])
 
     ##Check if ls is empty
@@ -289,7 +289,7 @@ def initial_build(link, container, args):
             patch_encoded = patch.decode('utf-8')
             command = f"cat {patch_encoded}"
             exec_log = client.api.exec_create(container.id,
-                                      command, workdir=f"/usr/src/app/{directory}")
+                                      command, workdir=f"/usr/src/app/{directory}/debian/patches")
             output = client.api.exec_start(exec_log['Id'])
 
             # Search for the CVE pattern
@@ -337,7 +337,7 @@ if __name__ == "__main__":
     parser.add_argument('--image', type=str, help='Path to the input link file')
     parser.add_argument('--output_dir', default = "debs_test_2", type=str, help='Path of directory')
     parser.add_argument('--parallels', default = 32, type=int, help='Path of directory')
-    parser.add_argument('--timeout', default = 60, type=int, help='Path of directory')
+    parser.add_argument('--timeout', default = 5 * 60, type=int, help='Path of directory')
 
     args = parser.parse_args()
 

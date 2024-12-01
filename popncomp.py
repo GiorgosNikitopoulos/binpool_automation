@@ -6,6 +6,7 @@ from parse import *
 import os
 import re
 import sys
+from func_timeout import func_timeout, FunctionTimedOut
 
 
 def handle_ctrl_c_with_locals(func):
@@ -91,7 +92,7 @@ def build(link, container, patch, filename, opt = 1):
 
     #Quilt pop the patch
     if patch != None:
-        command = f"quilt pop debian/patches/{filename}"
+        command = f"quilt pop {filename}"
         exec_log = client.api.exec_create(container.id, 
                                           command, workdir=f"/usr/src/app/{directory}") #Workdir change
         output = client.api.exec_start(exec_log['Id'])
@@ -153,6 +154,7 @@ def build(link, container, patch, filename, opt = 1):
     else:
         patch = "None"
 
+    patch = os.path.basename(patch)
     #Write tar
     with open(f"{args.output_dir}/{directory}_{patch}_opt{opt}", 'wb') as f:
         for chunk in bits:
@@ -256,9 +258,9 @@ def initial_build(link, container):
         return def_ret
 
     ##Which patches are in there
-    command = "/bin/sh -c 'ls -1a'"
+    command = "/bin/sh -c 'quilt series'"
     exec_log = client.api.exec_create(container.id, 
-                                      command, workdir=f"/usr/src/app/{directory}/debian/patches/")
+                                      command, workdir=f"/usr/src/app/{directory}")
     output = client.api.exec_start(exec_log['Id'])
 
     ##Check if ls is empty
@@ -273,15 +275,25 @@ def initial_build(link, container):
     patch_contents = []
     #Get list and cat all files to find CVE-NNNN-NNNNN pattern in a loop
     for patch in patches:
-        if patch != b'.' and patch != b'..' and patch != b'series':
+        if patch != b'.' and patch != b'..' and b'series' not in patch:
             patch_encoded = patch.decode('utf-8')
             command = f"cat {patch_encoded}"
             exec_log = client.api.exec_create(container.id,
-                                      command, workdir=f"/usr/src/app/{directory}/debian/patches/")
+                                      command, workdir=f"/usr/src/app/{directory}")
             output = client.api.exec_start(exec_log['Id'])
 
             # Search for the CVE pattern
-            found = re.search("CVE-\d{4}-\d{4,}", output.decode('utf-8'))
+            found = re.search("(?i)CVE-\d{4}-\d{4,}", output.decode('utf-8'))
+            found_filename = re.search("(?i)CVE-\d{4}-\d{4,}", patch_encoded)
+
+            #Prefer filename cve info
+            if found_filename:
+                #Keep actual CVE patch names
+                patch_contents.append(output)
+                cve_patches.append(found_filename.group())
+                filenames.append(patch_encoded)
+                continue
+
             if found:
                 #Keep actual CVE patch names
                 patch_contents.append(output)
@@ -338,7 +350,8 @@ if __name__ == "__main__":
         patch_files = [None] + patch_files
         patch_contents = [None] + patch_contents
         for patch, filename, patch_file in zip(patches, patch_files, patch_contents):
-            for opt in [0, 1, 2, 3]:
+            #for opt in [0, 1, 2, 3]:
+            for opt in [0]:
                 container = run_container(args.image, f"{args.image}_container_{_id}")
                 build(link, container, patch, filename, opt)
 

@@ -8,6 +8,8 @@ import re
 import sys
 from func_timeout import func_timeout, FunctionTimedOut
 
+def get_exec_output(client, exec_log):
+    return client.api.exec_start(exec_log['Id'])
 
 def handle_ctrl_c_with_locals(func):
     def wrapper(*args, **kwargs):
@@ -182,7 +184,7 @@ def run_container(image, name, detach=True, tty=True):
 
 @handle_ctrl_c_with_locals
 @log_function_call
-def initial_build(link, container):
+def initial_build(link, container, args):
 
     ''' This function test builds a repository and returns the 
         list of patches that can be applied to it by quilt'''
@@ -219,7 +221,14 @@ def initial_build(link, container):
     command = "dpkg-buildpackage -us -uc -j10"
     exec_log = client.api.exec_create(container.id, 
                                       command, workdir=f"/usr/src/app/{directory}") #Workdir change
-    output = client.api.exec_start(exec_log['Id'])
+
+    try:
+        output = func_timeout(args.timeout, get_exec_output, args=(client, exec_log))
+    except FunctionTimedOut:
+        print("Timed out building of project")
+        exit_container(container)
+        client.close()
+        return def_ret
 
     #Create output_directory
     command = "mkdir output_directory"
@@ -239,6 +248,7 @@ def initial_build(link, container):
     exec_log = client.api.exec_create(container.id, 
                                       command)
     output = client.api.exec_start(exec_log['Id'])
+
     try:
         ls_result = int(output)
     except ValueError:
@@ -327,6 +337,7 @@ if __name__ == "__main__":
     parser.add_argument('--image', type=str, help='Path to the input link file')
     parser.add_argument('--output_dir', default = "debs_test_2", type=str, help='Path of directory')
     parser.add_argument('--parallels', default = 32, type=int, help='Path of directory')
+    parser.add_argument('--timeout', default = 60, type=int, help='Path of directory')
 
     args = parser.parse_args()
 
@@ -340,7 +351,7 @@ if __name__ == "__main__":
 
         # spawn container
         container = run_container(args.image, f"{args.image}_container_{_id}")
-        patches, patch_files, patch_contents = initial_build(link, container)
+        patches, patch_files, patch_contents = initial_build(link, container, args)
 
         if patches == None or patches == False:
             continue
@@ -350,8 +361,8 @@ if __name__ == "__main__":
         patch_files = [None] + patch_files
         patch_contents = [None] + patch_contents
         for patch, filename, patch_file in zip(patches, patch_files, patch_contents):
-            #for opt in [0, 1, 2, 3]:
-            for opt in [0]:
+            #for opt in [0]:
+            for opt in [0, 1, 2, 3]:
                 container = run_container(args.image, f"{args.image}_container_{_id}")
                 build(link, container, patch, filename, opt)
 

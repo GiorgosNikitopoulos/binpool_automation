@@ -97,8 +97,8 @@ def build(link, container, patch, filename, opt = 1):
         command = f"quilt pop {filename}"
         exec_log = client.api.exec_create(container.id, 
                                           command, workdir=f"/usr/src/app/{directory}") #Workdir change
-        output = client.api.exec_start(exec_log['Id'])
-        print(output)
+        output = client.api.exec_start(exec_log['Id']).decode()
+        #print(output)
 
     #Install dependencies
     command = "apt build-dep . -y"
@@ -111,27 +111,27 @@ def build(link, container, patch, filename, opt = 1):
     exec_log = client.api.exec_create(container.id, 
                                       command, environment = environment_vars(opt), #Create environment variables with opt equal to the current runs opts
                                       workdir=f"/usr/src/app/{directory}") #Workdir change
-    output = client.api.exec_start(exec_log['Id'])
+    output = client.api.exec_start(exec_log['Id']).decode()
 
     #Create output_directory
     command = "mkdir output_directory"
     exec_log = client.api.exec_create(container.id, 
                                       command) 
-    output = client.api.exec_start(exec_log['Id'])
+    output = client.api.exec_start(exec_log['Id']).decode()
 
 
     #Copy .deb to output_directory
     command = "/bin/sh -c 'cp *.deb output_directory/'"
     exec_log = client.api.exec_create(container.id, 
                                       command)
-    output = client.api.exec_start(exec_log['Id'])
+    output = client.api.exec_start(exec_log['Id']).decode()
 
 
     ##See if it produced the debs
     command = "/bin/sh -c 'ls *.deb output_directory/ | wc -l'"
     exec_log = client.api.exec_create(container.id, 
                                       command)
-    output = client.api.exec_start(exec_log['Id'])
+    output = client.api.exec_start(exec_log['Id']).decode()
     try:
         ls_result = int(output)
     except ValueError:
@@ -333,24 +333,26 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Process a list of links and extract .deb files")
 
     # Add argument to accept a file path
-    parser.add_argument('--input_file', type=str, help='Path to the input link file')
-    parser.add_argument('--image', type=str, help='Path to the input link file')
-    parser.add_argument('--output_dir', default = "debs_test_2", type=str, help='Path of directory')
-    parser.add_argument('--parallels', default = 32, type=int, help='Path of directory')
-    parser.add_argument('--timeout', default = 60, type=int, help='Path of directory')
+    parser.add_argument('--input_link', '-i', type=str, help='Path to the input link file')
+    parser.add_argument('--container', '-c', type=str, default="bullseye", help='Name of the docker image to run')
+    parser.add_argument('--output_dir', '-o', default="output_data", type=str, help='Path of directory')
+    parser.add_argument('--parallels', default=32, type=int, help='Path of directory')
+    parser.add_argument('--timeout', default=60, type=int, help='Path of directory')
 
     args = parser.parse_args()
 
     _id = os.urandom(4).hex()
 
-    with open(args.input_file, 'r') as f:
+    image_name = args.container
+
+    with open(args.input_link, 'r') as f:
         links = f.read()
 
     for link in (links.split()):
         # create random suffix
 
         # spawn container
-        container = run_container(args.image, f"{args.image}_container_{_id}")
+        container = run_container(args.container, f"{image_name}_container_{_id}")
         patches, patch_files, patch_contents = initial_build(link, container, args)
 
         if patches == None or patches == False:
@@ -361,9 +363,8 @@ if __name__ == "__main__":
         patch_files = [None] + patch_files
         patch_contents = [None] + patch_contents
         for patch, filename, patch_file in zip(patches, patch_files, patch_contents):
-            #for opt in [0]:
             for opt in [0, 1, 2, 3]:
-                container = run_container(args.image, f"{args.image}_container_{_id}")
+                container = run_container(image_name, f"{image_name}_container_{_id}")
                 build(link, container, patch, filename, opt)
 
 

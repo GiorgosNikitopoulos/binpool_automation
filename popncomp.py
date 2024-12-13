@@ -21,7 +21,6 @@ def build(link, image, patch, filename, patch_file, opt, args):
     ''' This function test builds a repository and returns the 
         list of patches that can be applied to it by quilt'''
     print(f"Build function being called with patch: {patch} and filename: {filename}")
-
     #Create Docker Client
     client = docker.from_env()
 
@@ -256,8 +255,10 @@ def initial_build(link, args):
                 cve_patches.append(found.group())
                 filenames.append(patch_encoded)
 
+    # XXX debug
     #print(cve_patches)
-    print(filenames)
+    #print(filenames)
+
     #Copy output_directory to host
     bits, stat = container.get_archive("/usr/src/app/output_directory/")
     os.makedirs(f"{args.output_dir}", exist_ok=True)

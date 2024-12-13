@@ -33,7 +33,8 @@ RUN apt-get update && apt-get install -y \
 RUN apt-get update && apt-get upgrade -y
 
 RUN apt-get update && apt-get install -y \
-    devscripts
+    devscripts \
+    quilt
 
 # Create a working directory
 WORKDIR /usr/src/app

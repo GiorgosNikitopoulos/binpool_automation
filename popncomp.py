@@ -8,8 +8,10 @@ import re
 import sys
 from func_timeout import func_timeout, FunctionTimedOut
 
+
 def get_exec_output(client, exec_log):
     return client.api.exec_start(exec_log['Id'])
+
 
 def handle_ctrl_c_with_locals(func):
     def wrapper(*args, **kwargs):
@@ -18,7 +20,7 @@ def handle_ctrl_c_with_locals(func):
         except KeyboardInterrupt:
             print("\nCtrl+C caught!")
             print("Accessing local variables at the time of interrupt:")
-            
+
             # Get the current exception traceback
             tb = sys.exc_info()[2]
             while tb.tb_next:  # Traverse to the last frame (function that triggered Ctrl+C)
@@ -28,7 +30,7 @@ def handle_ctrl_c_with_locals(func):
                 if "build" not in func_name:
                     tb = tb.tb_next
                     continue
-                
+
                 print(f"Caught interrupt in {func_name}")
                 for var_name, value in local_vars.items():
                     print(f"  {var_name}: {value}")
@@ -37,6 +39,7 @@ def handle_ctrl_c_with_locals(func):
                         exit_container(value)
                         sys.exit(1)
     return wrapper
+
 
 def log_function_call(func):
     def wrapper(*args, **kwargs):
@@ -64,6 +67,7 @@ def environment_vars(flag_level):
                    "DEB_BUILD_OPTIONS": "nostrip debug"}
     return environment
 
+
 def exit_container(container):
     container.stop(timeout=10)
     container.remove(force=True)
@@ -73,16 +77,16 @@ def exit_container(container):
 @log_function_call
 def build(link, container, patch, filename, opt = 1):
 
-    ''' This function test builds a repository and returns the 
+    ''' This function test builds a repository and returns the
         list of patches that can be applied to it by quilt'''
-    
+
     client = docker.from_env()
 
     #Download Material
     command = f"dget -u --insecure {link}"
     exec_log = client.api.exec_create(container.id, command)
     output = client.api.exec_start(exec_log['Id'])
-    
+
     #Get the project name and directory name
     try:
         project, directory = search("info: extracting {} in {}\n", output.decode())
@@ -99,7 +103,7 @@ def build(link, container, patch, filename, opt = 1):
 
         while max_depth != 0:
             command = "/bin/sh -c 'quilt top | awk -F\"/\" \"{print $NF}\"'"
-            exec_log = client.api.exec_create(container.id, 
+            exec_log = client.api.exec_create(container.id,
                                               command, workdir=f"/usr/src/app/{directory}") #Workdir change
             output = client.api.exec_start(exec_log['Id']).decode()
 
@@ -119,7 +123,7 @@ def build(link, container, patch, filename, opt = 1):
                 print(f"Quilt top does not contain {patch}, quilt pop output:")
                 for line in output.splitlines():
                     print(f"[OUTPUT] {line}")
-            
+
             max_depth -= 1
 
 
@@ -130,35 +134,53 @@ def build(link, container, patch, filename, opt = 1):
             exit_container(container)
 
     #Install dependencies
+    print("Running apt build-dep...")
     command = "apt build-dep . -y"
-    exec_log = client.api.exec_create(container.id, 
+    exec_log = client.api.exec_create(container.id,
                                       command, workdir=f"/usr/src/app/{directory}") #Workdir change
-    output = client.api.exec_start(exec_log['Id'])
+    output = client.api.exec_start(exec_log['Id']).decode()
+    print("Output from apt build-dep:")
+    for line in output.splitlines():
+        print(f"[OUTPUT] {line}")
+
+    #Clean
+    print("Running clean...")
+    command = "/bin/sh -c 'debian/rules clean && rm -rf build'"
+    exec_log = client.api.exec_create(container.id,
+                                      command, workdir=f"/usr/src/app/{directory}") #Workdir change
+    output = client.api.exec_start(exec_log['Id']).decode()
+    print("Output from apt build-dep:")
+    for line in output.splitlines():
+        print(f"[OUTPUT] {line}")
 
     #Build
+    print("Running dpkg-buildpackage...")
     command = "dpkg-buildpackage -us -uc -j10"
-    exec_log = client.api.exec_create(container.id, 
+    exec_log = client.api.exec_create(container.id,
                                       command, environment = environment_vars(opt), #Create environment variables with opt equal to the current runs opts
                                       workdir=f"/usr/src/app/{directory}") #Workdir change
-    output = client.api.exec_start(exec_log['Id'])
+    output = client.api.exec_start(exec_log['Id']).decode()
+    for line in output.splitlines():
+        print(f"[OUTPUT] {line}")
 
     #Create output_directory
     command = "mkdir output_directory"
-    exec_log = client.api.exec_create(container.id, 
-                                      command) 
+    exec_log = client.api.exec_create(container.id,
+                                      command)
     output = client.api.exec_start(exec_log['Id'])
 
 
     #Copy .deb to output_directory
+    print("Copying .deb file")
     command = "/bin/sh -c 'cp *.deb output_directory/'"
-    exec_log = client.api.exec_create(container.id, 
+    exec_log = client.api.exec_create(container.id,
                                       command)
     output = client.api.exec_start(exec_log['Id'])
 
 
     ##See if it produced the debs
     command = "/bin/sh -c 'ls *.deb output_directory/ | wc -l'"
-    exec_log = client.api.exec_create(container.id, 
+    exec_log = client.api.exec_create(container.id,
                                       command)
     output = client.api.exec_start(exec_log['Id'])
     try:
@@ -168,7 +190,7 @@ def build(link, container, patch, filename, opt = 1):
         exit_container(container)
         return None
 
-    if ls_result <= 3: 
+    if ls_result <= 3:
         #Then no .deb file was created
         #Return None and do not extract anything
         print("No .deb file was created return None and do not extract anything", file=sys.stderr)
@@ -195,10 +217,10 @@ def build(link, container, patch, filename, opt = 1):
     if patch_file != None:
         with open(f"{args.output_dir}/{directory}_{patch}_opt{opt}.patch", 'wb') as f:
             f.write(patch_file)
-    
+
     #Remove container
     exit_container(container)
-    
+
     #Disconnect client
     client.close()
 
@@ -215,7 +237,7 @@ def run_container(image, name, detach=True, tty=True):
 @log_function_call
 def initial_build(link, container, args):
 
-    ''' This function test builds a repository and returns the 
+    ''' This function test builds a repository and returns the
         list of patches that can be applied to it by quilt'''
 
     client = docker.from_env()
@@ -228,7 +250,7 @@ def initial_build(link, container, args):
     command = f"dget -u --insecure {link}"
     exec_log = client.api.exec_create(container.id, command)
     output = client.api.exec_start(exec_log['Id'])
-    
+
     #pdb.set_trace()
     #Get the project name and directory name
     try:
@@ -242,13 +264,13 @@ def initial_build(link, container, args):
 
     #Install dependencies
     command = "apt build-dep . -y"
-    exec_log = client.api.exec_create(container.id, 
+    exec_log = client.api.exec_create(container.id,
                                       command, workdir=f"/usr/src/app/{directory}") #Workdir change
     output = client.api.exec_start(exec_log['Id'])
 
     #Build
     command = "dpkg-buildpackage -us -uc -j10"
-    exec_log = client.api.exec_create(container.id, 
+    exec_log = client.api.exec_create(container.id,
                                       command, workdir=f"/usr/src/app/{directory}") #Workdir change
 
     try:
@@ -261,20 +283,20 @@ def initial_build(link, container, args):
 
     #Create output_directory
     command = "mkdir output_directory"
-    exec_log = client.api.exec_create(container.id, 
-                                      command) 
+    exec_log = client.api.exec_create(container.id,
+                                      command)
     output = client.api.exec_start(exec_log['Id'])
 
 
     #Copy .deb to output_directory
     command = "/bin/sh -c 'cp *.deb output_directory/'"
-    exec_log = client.api.exec_create(container.id, 
+    exec_log = client.api.exec_create(container.id,
                                       command)
     output = client.api.exec_start(exec_log['Id'])
 
     ##See if it produced the debs
     command = "/bin/sh -c 'ls *.deb output_directory/ | wc -l'"
-    exec_log = client.api.exec_create(container.id, 
+    exec_log = client.api.exec_create(container.id,
                                       command)
     output = client.api.exec_start(exec_log['Id'])
 
@@ -288,7 +310,7 @@ def initial_build(link, container, args):
         client.close()
         return def_ret
 
-    if ls_result <= 3: 
+    if ls_result <= 3:
         #Then no .deb file was created
         #Return None and do not extract anything
         print("No .deb file was created return None and do not extract anything", file=sys.stderr)
@@ -298,7 +320,7 @@ def initial_build(link, container, args):
 
     ##Which patches are in there
     command = "/bin/sh -c 'quilt series'"
-    exec_log = client.api.exec_create(container.id, 
+    exec_log = client.api.exec_create(container.id,
                                       command, workdir=f"/usr/src/app/{directory}")
     output = client.api.exec_start(exec_log['Id'])
 
@@ -349,10 +371,10 @@ def initial_build(link, container, args):
     with open(f"{args.output_dir}/{directory}", 'wb') as f:
         for chunk in bits:
             f.write(chunk)
-    
+
     #Remove container
     exit_container(container)
-    
+
     if len(cve_patches) > 0:
         pass
     else:
@@ -366,6 +388,7 @@ if __name__ == "__main__":
     parser.add_argument('--input_file', type=str, required=True, help='Path to the input link file')
     parser.add_argument('--image', type=str, required=True, help='Path to the input link file')
     parser.add_argument('--output_dir', default="output", type=str, help='Path of directory')
+    parser.add_argument('--timeout', default = 60, type=int, help='Timeout')
     parser.add_argument('--parallels', default=32, type=int, help='Path of directory')
 
     args = parser.parse_args()
@@ -390,9 +413,7 @@ if __name__ == "__main__":
         patch_files = [None] + patch_files
         patch_contents = [None] + patch_contents
         for patch, filename, patch_file in zip(patches, patch_files, patch_contents):
-            #for opt in [0]:
-            for opt in [0, 1, 2, 3]:
+            for opt in [0]:
+            #for opt in [0, 1, 2, 3]:
                 container = run_container(args.image, f"{args.image}_container_{_id}")
                 build(link, container, patch, filename, opt)
-
-

@@ -21,6 +21,7 @@ def build(link, image, patch, filename, patch_file, opt, args):
     ''' This function test builds a repository and returns the 
         list of patches that can be applied to it by quilt'''
     print(f"Build function being called with patch: {patch} and filename: {filename}")
+
     #Create Docker Client
     client = docker.from_env()
 
@@ -43,11 +44,41 @@ def build(link, image, patch, filename, patch_file, opt, args):
 
     #Quilt pop the patch
     if patch != None:
-        command = f"quilt pop debian/patches/{filename}"
-        exec_log = client.api.exec_create(container.id, 
-                                          command, workdir=f"/usr/src/app/{directory}") #Workdir change
-        output = client.api.exec_start(exec_log['Id'])
-        print(output)
+        # get the topmost patch, max 10 depth
+        max_depth = 10
+
+        while max_depth != 0:
+            command = "/bin/sh -c 'quilt top | awk -F\"/\" \"{print $NF}\"'"
+            exec_log = client.api.exec_create(container.id, 
+                                              command, workdir=f"/usr/src/app/{directory}") #Workdir change
+            output = client.api.exec_start(exec_log['Id']).decode()
+
+            if patch in output:
+                print(f"Quilt top output contains {patch}:")
+                for line in output.splitlines():
+                    print(f"[OUTPUT] {line}")
+                done_popping = True
+                break
+            else:
+                # pop a patch
+                command = "quilt pop"
+                exec_log = client.api.exec_create(container.id,
+                                                  command,
+                                                  workdir=f"/usr/src/app/{directory}")
+                output = client.api.exec_start(exec_log['Id']).decode()
+                print(f"Quilt top does not contain {patch}, quilt pop output:")
+                for line in output.splitlines():
+                    print(f"[OUTPUT] {line}")
+            
+            max_depth -= 1
+
+
+        if "No patch removed" in output:
+            for line in output.splitlines():
+                print(f"[OUTPUT] {line}")
+            print("Error with quilt! stopping...", file=sys.stderr)
+            exit_container(container)
+        
 
     #Install dependencies
     command = "apt build-dep . -y"
@@ -140,7 +171,7 @@ def initial_build(link, args):
     #Get the project name and directory name
     try:
         project, directory = search("info: extracting {} in {}\n", output.decode())
-        print(f"This is {project} and {directory}")
+        print(f"Processing {project}, {directory}")
     except Exception as e:
         print(e)
         exit_container(container)
@@ -225,7 +256,7 @@ def initial_build(link, args):
                 cve_patches.append(found.group())
                 filenames.append(patch_encoded)
 
-    print(cve_patches)
+    #print(cve_patches)
     print(filenames)
     #Copy output_directory to host
     bits, stat = container.get_archive("/usr/src/app/output_directory/")
@@ -248,10 +279,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Process a list of links and extract .deb files")
 
     # Add argument to accept a file path
-    parser.add_argument('--input_file', type=str, help='Path to the input link file')
-    parser.add_argument('--image', type=str, help='Path to the input link file')
-    parser.add_argument('--output_dir', default = "debs_test_2", type=str, help='Path of directory')
-    parser.add_argument('--parallels', default = 32, type=int, help='Path of directory')
+    parser.add_argument('--input_file', type=str, required=True, help='Path to the input link file')
+    parser.add_argument('--image', type=str, required=True, help='Path to the input link file')
+    parser.add_argument('--output_dir', default="output", type=str, help='Path of directory')
+    parser.add_argument('--parallels', default=32, type=int, help='Path of directory')
 
     args = parser.parse_args()
 

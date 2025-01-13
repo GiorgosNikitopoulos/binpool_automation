@@ -132,6 +132,7 @@ def build(link, container, patch, filename, opt = 1):
                 print(f"[OUTPUT] {line}")
             print("Error with quilt! stopping...", file=sys.stderr)
             exit_container(container)
+            return None
 
     #Install dependencies
     print("Running apt build-dep...")
@@ -159,7 +160,13 @@ def build(link, container, patch, filename, opt = 1):
     exec_log = client.api.exec_create(container.id,
                                       command, environment = environment_vars(opt), #Create environment variables with opt equal to the current runs opts
                                       workdir=f"/usr/src/app/{directory}") #Workdir change
-    output = client.api.exec_start(exec_log['Id']).decode()
+    try:
+        output = client.api.exec_start(exec_log['Id']).decode()
+    except Exception as e:
+        print(f"Cannot build package, error: {e}")
+        exit_container(container)
+        return None
+
     for line in output.splitlines():
         print(f"[OUTPUT] {line}")
 
@@ -344,8 +351,15 @@ def initial_build(link, container, args):
             output = client.api.exec_start(exec_log['Id'])
 
             # Search for the CVE pattern
-            found = re.search("(?i)CVE-\d{4}-\d{4,}", output.decode('utf-8'))
-            found_filename = re.search("(?i)CVE-\d{4}-\d{4,}", patch_encoded)
+            try:
+                found = re.search("(?i)CVE-\d{4}-\d{4,}", output.decode('utf-8'))
+                found_filename = re.search("(?i)CVE-\d{4}-\d{4,}", patch_encoded)
+            except Exception as e:
+                print(f"Searched for CVE pattern and found error: {e}", file=sys.stderr)
+                exit_container(container)
+                client.close()
+                return def_ret
+
 
             #Prefer filename cve info
             if found_filename:
@@ -388,8 +402,8 @@ if __name__ == "__main__":
     parser.add_argument('--input_file', type=str, required=True, help='Path to the input link file')
     parser.add_argument('--image', type=str, required=True, help='Path to the input link file')
     parser.add_argument('--output_dir', default="output", type=str, help='Path of directory')
-    parser.add_argument('--timeout', default = 60, type=int, help='Timeout')
-    parser.add_argument('--parallels', default=32, type=int, help='Path of directory')
+    parser.add_argument('--timeout', default = 300, type=int, help='Timeout')
+    parser.add_argument('--parallels', default=64, type=int, help='Path of directory')
 
     args = parser.parse_args()
 
@@ -413,7 +427,7 @@ if __name__ == "__main__":
         patch_files = [None] + patch_files
         patch_contents = [None] + patch_contents
         for patch, filename, patch_file in zip(patches, patch_files, patch_contents):
-            for opt in [0]:
-            #for opt in [0, 1, 2, 3]:
+            #for opt in [0]:
+            for opt in [0, 1, 2, 3]:
                 container = run_container(args.image, f"{args.image}_container_{_id}")
                 build(link, container, patch, filename, opt)

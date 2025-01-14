@@ -97,6 +97,7 @@ def build(link, container, patch, filename, opt = 1):
         return False
 
     #Quilt pop the patch
+    done_popping = False
     if patch != None:
         # get the topmost patch, max 10 depth
         max_depth = 10
@@ -112,6 +113,13 @@ def build(link, container, patch, filename, opt = 1):
                 for line in output.splitlines():
                     print(f"[OUTPUT] {line}")
                 done_popping = True
+                
+                # pop a patch
+                command = "quilt pop"
+                exec_log = client.api.exec_create(container.id,
+                                                  command,
+                                                  workdir=f"/usr/src/app/{directory}")
+                output = client.api.exec_start(exec_log['Id']).decode()
                 break
             else:
                 # pop a patch
@@ -127,7 +135,7 @@ def build(link, container, patch, filename, opt = 1):
             max_depth -= 1
 
 
-        if "No patch removed" in output:
+        if not done_popping and "No patch removed" in output:
             for line in output.splitlines():
                 print(f"[OUTPUT] {line}")
             print("Error with quilt! stopping...", file=sys.stderr)

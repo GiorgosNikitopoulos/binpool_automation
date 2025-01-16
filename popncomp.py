@@ -10,10 +10,11 @@ from func_timeout import func_timeout, FunctionTimedOut
 import concurrent.futures
 
 
-#def process_build(patch, filename, patch_file, opt):
-#    container = run_container(args.image, f"{args.image}_container_{_id}")
-#    build(link, container, patch, filename, opt, patch_file)
-#    return (link, patch, filename, opt)  # Return results if needed
+def process_build(patch, filename, patch_file, opt):
+    _id = os.urandom(4).hex()
+    container = run_container(args.image, f"{args.image}_container_{_id}")
+    build(link, container, patch, filename, opt, patch_file)
+    return (link, patch, filename, opt)  # Return results if needed
 
 def get_batches(lst, batch_size):
     for i in range(0, len(lst), batch_size):
@@ -35,10 +36,18 @@ def process_link(link, args):
 
     results = []
     for patch, filename, patch_file in zip(patches, patch_files, patch_contents):
-        for opt in [0, 1, 2, 3]:
-            container = run_container(args.image, f"{args.image}_container_{_id}")
-            build(link, container, patch, filename, opt, patch_file)
-            results.append((link, patch, filename, opt))  # Store results if needed
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            # Create futures for all combinations of patches and optimization levels
+            futures = [
+                executor.submit(process_build, patch, filename, patch_file, opt)
+                for patch, filename, patch_file in zip(patches, patch_files, patch_contents)
+                for opt in [0, 1, 2, 3]
+            ]
+            # Collect results as they complete
+            for future in concurrent.futures.as_completed(futures):
+                results.append(future.result())
+
+            
     return results
 
 def get_exec_output(client, exec_log):

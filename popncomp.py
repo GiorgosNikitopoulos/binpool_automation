@@ -7,7 +7,39 @@ import os
 import re
 import sys
 from func_timeout import func_timeout, FunctionTimedOut
+import concurrent.futures
 
+
+#def process_build(patch, filename, patch_file, opt):
+#    container = run_container(args.image, f"{args.image}_container_{_id}")
+#    build(link, container, patch, filename, opt, patch_file)
+#    return (link, patch, filename, opt)  # Return results if needed
+
+def get_batches(lst, batch_size):
+    for i in range(0, len(lst), batch_size):
+        yield lst[i:i + batch_size]
+
+def process_link(link, args):
+    # Create random suffix and spawn container
+    _id = os.urandom(4).hex()
+    container = run_container(args.image, f"{args.image}_container_{_id}")
+    patches, patch_files, patch_contents = initial_build(link, container, args)
+
+    if not patches:
+        return None  # Skip this link if no patches are found
+
+    # No patches is a patch version too
+    patches = [None] + patches
+    patch_files = [None] + patch_files
+    patch_contents = [None] + patch_contents
+
+    results = []
+    for patch, filename, patch_file in zip(patches, patch_files, patch_contents):
+        for opt in [0, 1, 2, 3]:
+            container = run_container(args.image, f"{args.image}_container_{_id}")
+            build(link, container, patch, filename, opt, patch_file)
+            results.append((link, patch, filename, opt))  # Store results if needed
+    return results
 
 def get_exec_output(client, exec_log):
     return client.api.exec_start(exec_log['Id'])
@@ -75,7 +107,7 @@ def exit_container(container):
 
 @handle_ctrl_c_with_locals
 @log_function_call
-def build(link, container, patch, filename, opt = 1):
+def build(link, container, patch, filename, opt, patch_file):
 
     ''' This function test builds a repository and returns the
         list of patches that can be applied to it by quilt'''
@@ -109,13 +141,14 @@ def build(link, container, patch, filename, opt = 1):
             output = client.api.exec_start(exec_log['Id']).decode()
 
             if patch in output:
-                print(f"Quilt top output contains {patch}:")
-                for line in output.splitlines():
-                    print(f"[OUTPUT] {line}")
+                #print(f"Quilt top output contains {patch}:")
+                #for line in output.splitlines():
+                    #print(f"[OUTPUT] {line}")
                 done_popping = True
                 
                 # pop a patch
-                command = "quilt pop"
+                #command = "quilt pop"
+                command = "quilt delete"
                 exec_log = client.api.exec_create(container.id,
                                                   command,
                                                   workdir=f"/usr/src/app/{directory}")
@@ -123,21 +156,22 @@ def build(link, container, patch, filename, opt = 1):
                 break
             else:
                 # pop a patch
-                command = "quilt pop"
+                #command = "quilt pop"
+                command = "quilt delete"
                 exec_log = client.api.exec_create(container.id,
                                                   command,
                                                   workdir=f"/usr/src/app/{directory}")
                 output = client.api.exec_start(exec_log['Id']).decode()
-                print(f"Quilt top does not contain {patch}, quilt pop output:")
-                for line in output.splitlines():
-                    print(f"[OUTPUT] {line}")
+                #print(f"Quilt top does not contain {patch}, quilt pop output:")
+                #for line in output.splitlines():
+                    #print(f"[OUTPUT] {line}")
 
             max_depth -= 1
 
 
         if not done_popping and "No patch removed" in output:
-            for line in output.splitlines():
-                print(f"[OUTPUT] {line}")
+            #for line in output.splitlines():
+                #print(f"[OUTPUT] {line}")
             print("Error with quilt! stopping...", file=sys.stderr)
             exit_container(container)
             return None
@@ -148,9 +182,9 @@ def build(link, container, patch, filename, opt = 1):
     exec_log = client.api.exec_create(container.id,
                                       command, workdir=f"/usr/src/app/{directory}") #Workdir change
     output = client.api.exec_start(exec_log['Id']).decode()
-    print("Output from apt build-dep:")
-    for line in output.splitlines():
-        print(f"[OUTPUT] {line}")
+    #print("Output from apt build-dep:")
+    #for line in output.splitlines():
+        #print(f"[OUTPUT] {line}")
 
     #Clean
     print("Running clean...")
@@ -158,16 +192,18 @@ def build(link, container, patch, filename, opt = 1):
     exec_log = client.api.exec_create(container.id,
                                       command, workdir=f"/usr/src/app/{directory}") #Workdir change
     output = client.api.exec_start(exec_log['Id']).decode()
-    print("Output from apt build-dep:")
-    for line in output.splitlines():
-        print(f"[OUTPUT] {line}")
+    #print("Output from apt build-dep:")
+    #for line in output.splitlines():
+        #print(f"[OUTPUT] {line}")
 
+    #pdb.set_trace()
     #Build
     print("Running dpkg-buildpackage...")
     command = "dpkg-buildpackage -us -uc -j10"
     exec_log = client.api.exec_create(container.id,
                                       command, environment = environment_vars(opt), #Create environment variables with opt equal to the current runs opts
                                       workdir=f"/usr/src/app/{directory}") #Workdir change
+    #pdb.set_trace()
     try:
         output = client.api.exec_start(exec_log['Id']).decode()
     except Exception as e:
@@ -175,8 +211,8 @@ def build(link, container, patch, filename, opt = 1):
         exit_container(container)
         return None
 
-    for line in output.splitlines():
-        print(f"[OUTPUT] {line}")
+    #for line in output.splitlines():
+        #print(f"[OUTPUT] {line}")
 
     #Create output_directory
     command = "mkdir output_directory"
@@ -411,31 +447,25 @@ if __name__ == "__main__":
     parser.add_argument('--image', type=str, required=True, help='Path to the input link file')
     parser.add_argument('--output_dir', default="output", type=str, help='Path of directory')
     parser.add_argument('--timeout', default = 300, type=int, help='Timeout')
-    parser.add_argument('--parallels', default=64, type=int, help='Path of directory')
+    parser.add_argument('--parallels', default=16, type=int, help='Path of directory')
 
     args = parser.parse_args()
 
-    _id = os.urandom(4).hex()
 
     with open(args.input_file, 'r') as f:
         links = f.read()
 
-    for link in (links.split()):
-        # create random suffix
+    for link_batch in (get_batches(links.split(), 15)):
+        with concurrent.futures.ProcessPoolExecutor(max_workers=15) as executor:
+            futures = []
+            for link in link_batch:
+                print(link)
+                futures.append(executor.submit(process_link, link, args))
 
-        # spawn container
-        container = run_container(args.image, f"{args.image}_container_{_id}")
-        patches, patch_files, patch_contents = initial_build(link, container, args)
+            # Wait for all futures to complete
+            results = []
+            for future in concurrent.futures.as_completed(futures):
+                result = future.result()
+                if result:
+                    results.append(result)
 
-        if patches == None or patches == False:
-            continue
-
-        #No patches is a patch version too
-        patches = [None] + patches
-        patch_files = [None] + patch_files
-        patch_contents = [None] + patch_contents
-        for patch, filename, patch_file in zip(patches, patch_files, patch_contents):
-            #for opt in [0]:
-            for opt in [0, 1, 2, 3]:
-                container = run_container(args.image, f"{args.image}_container_{_id}")
-                build(link, container, patch, filename, opt)

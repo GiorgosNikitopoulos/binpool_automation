@@ -10,7 +10,7 @@ from func_timeout import func_timeout, FunctionTimedOut
 import concurrent.futures
 
 
-def process_build(patch, filename, patch_file, opt):
+def process_build(link, patch, filename, patch_file, opt):
     _id = os.urandom(4).hex()
     container = run_container(args.image, f"{args.image}_container_{_id}")
     build(link, container, patch, filename, opt, patch_file)
@@ -39,15 +39,13 @@ def process_link(link, args):
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
             # Create futures for all combinations of patches and optimization levels
             futures = [
-                executor.submit(process_build, patch, filename, patch_file, opt)
+                executor.submit(process_build, link, patch, filename, patch_file, opt)
                 for patch, filename, patch_file in zip(patches, patch_files, patch_contents)
                 for opt in [0, 1, 2, 3]
             ]
             # Collect results as they complete
             for future in concurrent.futures.as_completed(futures):
                 results.append(future.result())
-
-            
     return results
 
 def get_exec_output(client, exec_log):
@@ -464,8 +462,8 @@ if __name__ == "__main__":
     with open(args.input_file, 'r') as f:
         links = f.read()
 
-    for link_batch in (get_batches(links.split(), 15)):
-        with concurrent.futures.ProcessPoolExecutor(max_workers=15) as executor:
+    for link_batch in (get_batches(links.split(), 5)):
+        with concurrent.futures.ProcessPoolExecutor(max_workers=5) as executor:
             futures = []
             for link in link_batch:
                 print(link)

@@ -36,7 +36,7 @@ def process_link(link, args):
 
     results = []
     for patch, filename, patch_file in zip(patches, patch_files, patch_contents):
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
             # Create futures for all combinations of patches and optimization levels
             futures = [
                 executor.submit(process_build, link, patch, filename, patch_file, opt)
@@ -211,12 +211,20 @@ def build(link, container, patch, filename, opt, patch_file):
                                       command, environment = environment_vars(opt), #Create environment variables with opt equal to the current runs opts
                                       workdir=f"/usr/src/app/{directory}") #Workdir change
     #pdb.set_trace()
+    #try:
+    #    output = client.api.exec_start(exec_log['Id']).decode()
+    #except Exception as e:
+    #    print(f"Cannot build package, error: {e}")
+    #    exit_container(container)
+    #    return None
     try:
-        output = client.api.exec_start(exec_log['Id']).decode()
-    except Exception as e:
-        print(f"Cannot build package, error: {e}")
+        output = func_timeout(args.timeout, get_exec_output, args=(client, exec_log))
+    except FunctionTimedOut:
+        print("Timed out building of project")
         exit_container(container)
+        client.close()
         return None
+
 
     #for line in output.splitlines():
         #print(f"[OUTPUT] {line}")
@@ -462,7 +470,7 @@ if __name__ == "__main__":
     with open(args.input_file, 'r') as f:
         links = f.read()
 
-    for link_batch in (get_batches(links.split(), 5)):
+    for link_batch in (get_batches(links.split(), 170)):
         with concurrent.futures.ProcessPoolExecutor(max_workers=5) as executor:
             futures = []
             for link in link_batch:

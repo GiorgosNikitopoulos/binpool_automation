@@ -66,7 +66,6 @@ python3 popncomp.py --input_file dsc_list.txt --image stretch
 ```
 
 ## Authors
-Thank you to the contributing authors of this project
 
 * [@GiorgosNikitopoulos](https://github.com/GiorgosNikitopoulos)(Corresponding Author of this project)
 * [@aaronportnoy](https://github.com/aaronportnoy)
@@ -74,7 +73,7 @@ Thank you to the contributing authors of this project
 
 ## License
 
-This project is licensed under the BSD License - see the LICENSE.md file for details
+This project is licensed under the BSD License - see the LICENSE file for details
 
 ## Acknowledgments
-Special thanks to Christophe Hauser and Sima Arasteh
+Special thanks to [Christophe Hauser](https://faculty-directory.dartmouth.edu/christophe-hauser) and [Sima Arasteh](https://github.com/SimaArasteh)

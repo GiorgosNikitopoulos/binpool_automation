@@ -8,6 +8,8 @@ import re
 import sys
 from func_timeout import func_timeout, FunctionTimedOut
 import concurrent.futures
+from datetime import datetime
+
 
 
 def process_build(link, patch, filename, patch_file, opt):
@@ -36,7 +38,7 @@ def process_link(link, args):
 
     results = []
     for patch, filename, patch_file in zip(patches, patch_files, patch_contents):
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
             # Create futures for all combinations of patches and optimization levels
             futures = [
                 executor.submit(process_build, link, patch, filename, patch_file, opt)
@@ -108,8 +110,14 @@ def environment_vars(flag_level):
 
 
 def exit_container(container):
-    container.stop(timeout=10)
-    container.remove(force=True)
+    try:
+        container.stop(timeout=60)
+        container.remove(force=True)
+    except Exception as e:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        print(f"[ERROR {timestamp}] {e}")
+        print(f"{timestamp}")
+
 
 
 @handle_ctrl_c_with_locals
@@ -459,10 +467,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Process a list of links and extract .deb files")
 
     parser.add_argument('--input_file', type=str, required=True, help='Path to the input link file')
-    parser.add_argument('--image', type=str, required=True, help='Path to the input link file')
-    parser.add_argument('--output_dir', default="output", type=str, help='Path of directory')
-    parser.add_argument('--timeout', default = 300, type=int, help='Timeout')
-    parser.add_argument('--parallels', default=16, type=int, help='Path of directory')
+    parser.add_argument('--image', type=str, required=True, help='Image name')
+    parser.add_argument('--output_dir', default="output", type=str, help='Path of output directory')
+    parser.add_argument('--timeout', default = 300, type=int, help='Build Timeout')
+    parser.add_argument('--parallels', default=16, type=int, help='Number of parallel workers')
 
     args = parser.parse_args()
 
@@ -471,7 +479,7 @@ if __name__ == "__main__":
         links = f.read()
 
     for link_batch in (get_batches(links.split(), 170)):
-        with concurrent.futures.ProcessPoolExecutor(max_workers=5) as executor:
+        with concurrent.futures.ProcessPoolExecutor(max_workers=args.parallels) as executor:
             futures = []
             for link in link_batch:
                 print(link)

@@ -61,7 +61,7 @@ options:
 
 example:
 ```
-mkdir output_dir
+mkdir output
 python3 popncomp.py --input_file dsc_list.txt --image stretch
 ```
 

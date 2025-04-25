@@ -51,12 +51,12 @@ options:
   -h, --help            show this help message and exit
   --input_file INPUT_FILE
                         Path to the input link file
-  --image IMAGE         Path to the input link file
+  --image IMAGE         Image name
   --output_dir OUTPUT_DIR
-                        Path of directory
-  --timeout TIMEOUT     Timeout
+                        Path of output directory
+  --timeout TIMEOUT     Build Timeout
   --parallels PARALLELS
-                        Path of directory
+                        Number of parallel workers
 ```
 
 example:
